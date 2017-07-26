@@ -28,11 +28,14 @@ import android.service.quicksettings.Tile;
 import android.widget.Switch;
 
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
+import com.android.systemui.Dependency;
 import com.android.systemui.R;
 import com.android.systemui.broadcast.BroadcastDispatcher;
+import com.android.systemui.plugins.ActivityStarter;
 import com.android.systemui.plugins.qs.QSTile.BooleanState;
 import com.android.systemui.qs.QSHost;
 import com.android.systemui.qs.tileimpl.QSTileImpl;
+import com.android.systemui.statusbar.policy.KeyguardStateController;
 
 import javax.inject.Inject;
 
@@ -44,10 +47,13 @@ public class NfcTile extends QSTileImpl<BooleanState> {
 
     private boolean mListening;
 
+    private final KeyguardStateController mKeyguardStateController;
+
     @Inject
     public NfcTile(QSHost host, BroadcastDispatcher broadcastDispatcher) {
         super(host);
         mBroadcastDispatcher = broadcastDispatcher;
+        mKeyguardStateController = Dependency.get(KeyguardStateController.class);
     }
 
     @Override
@@ -81,8 +87,7 @@ public class NfcTile extends QSTileImpl<BooleanState> {
         return new Intent(Settings.ACTION_NFC_SETTINGS);
     }
 
-    @Override
-    protected void handleClick() {
+    private void handleClickInner() {
         if (getAdapter() == null) {
             return;
         }
@@ -91,6 +96,18 @@ public class NfcTile extends QSTileImpl<BooleanState> {
         } else {
             getAdapter().disable();
         }
+    }
+
+    @Override
+    protected void handleClick() {
+        if (!mKeyguardStateController.isUnlocked()) {
+            Dependency.get(ActivityStarter.class).postQSRunnableDismissingKeyguard(() -> {
+                mHost.openPanels();
+                handleClickInner();
+            });
+            return;
+        }
+        handleClickInner();
     }
 
     @Override
