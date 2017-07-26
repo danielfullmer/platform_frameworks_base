@@ -31,6 +31,7 @@ import android.widget.Switch;
 
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
+import com.android.systemui.Dependency;
 import com.android.systemui.R;
 import com.android.systemui.broadcast.BroadcastDispatcher;
 import com.android.systemui.plugins.ActivityStarter;
@@ -38,6 +39,8 @@ import com.android.systemui.plugins.qs.QSTile.BooleanState;
 import com.android.systemui.qs.GlobalSetting;
 import com.android.systemui.qs.QSHost;
 import com.android.systemui.qs.tileimpl.QSTileImpl;
+import com.android.systemui.plugins.ActivityStarter;
+import com.android.systemui.statusbar.policy.KeyguardStateController;
 
 import javax.inject.Inject;
 
@@ -50,12 +53,15 @@ public class AirplaneModeTile extends QSTileImpl<BooleanState> {
 
     private boolean mListening;
 
+    private final KeyguardStateController mKeyguardStateController;
+
     @Inject
     public AirplaneModeTile(QSHost host, ActivityStarter activityStarter,
             BroadcastDispatcher broadcastDispatcher) {
         super(host);
         mActivityStarter = activityStarter;
         mBroadcastDispatcher = broadcastDispatcher;
+        mKeyguardStateController = Dependency.get(KeyguardStateController.class);
 
         mSetting = new GlobalSetting(mContext, mHandler, Global.AIRPLANE_MODE_ON) {
             @Override
@@ -70,8 +76,7 @@ public class AirplaneModeTile extends QSTileImpl<BooleanState> {
         return new BooleanState();
     }
 
-    @Override
-    public void handleClick() {
+    private void handleClickInner() {
         boolean airplaneModeEnabled = mState.value;
         MetricsLogger.action(mContext, getMetricsCategory(), !airplaneModeEnabled);
         if (!airplaneModeEnabled && TelephonyProperties.in_ecm_mode().orElse(false)) {
@@ -80,6 +85,18 @@ public class AirplaneModeTile extends QSTileImpl<BooleanState> {
             return;
         }
         setEnabled(!airplaneModeEnabled);
+    }
+
+    @Override
+    public void handleClick() {
+        if (!mKeyguardStateController.isUnlocked()) {
+            Dependency.get(ActivityStarter.class).postQSRunnableDismissingKeyguard(() -> {
+                mHost.openPanels();
+                handleClickInner();
+            });
+            return;
+        }
+        handleClickInner();
     }
 
     private void setEnabled(boolean enabled) {
