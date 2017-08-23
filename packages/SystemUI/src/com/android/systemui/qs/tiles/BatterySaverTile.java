@@ -22,12 +22,15 @@ import android.widget.Switch;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
+import com.android.systemui.Dependency;
 import com.android.systemui.R;
 import com.android.systemui.plugins.qs.QSTile.BooleanState;
 import com.android.systemui.qs.QSHost;
 import com.android.systemui.qs.SecureSetting;
 import com.android.systemui.qs.tileimpl.QSTileImpl;
+import com.android.systemui.plugins.ActivityStarter;
 import com.android.systemui.statusbar.policy.BatteryController;
+import com.android.systemui.statusbar.policy.KeyguardStateController;
 
 import javax.inject.Inject;
 
@@ -44,6 +47,7 @@ public class BatterySaverTile extends QSTileImpl<BooleanState> implements
     private boolean mPluggedIn;
 
     private Icon mIcon = ResourceIcon.get(com.android.internal.R.drawable.ic_qs_battery_saver);
+    private final KeyguardStateController mKeyguardStateController;
 
     @Inject
     public BatterySaverTile(QSHost host, BatteryController batteryController) {
@@ -51,6 +55,7 @@ public class BatterySaverTile extends QSTileImpl<BooleanState> implements
         mBatteryController = batteryController;
         mBatteryController.observe(getLifecycle(), this);
         int currentUser = host.getUserContext().getUserId();
+        mKeyguardStateController = Dependency.get(KeyguardStateController.class);
         mSetting = new SecureSetting(mContext, mHandler, Secure.LOW_POWER_WARNING_ACKNOWLEDGED,
                 currentUser) {
             @Override
@@ -95,6 +100,13 @@ public class BatterySaverTile extends QSTileImpl<BooleanState> implements
     @Override
     protected void handleClick() {
         if (getState().state == Tile.STATE_UNAVAILABLE) {
+            return;
+        }
+        if (!mKeyguardStateController.isUnlocked()) {
+            Dependency.get(ActivityStarter.class).postQSRunnableDismissingKeyguard(() -> {
+                mHost.openPanels();
+                mBatteryController.setPowerSaveMode(!mPowerSave);
+            });
             return;
         }
         mBatteryController.setPowerSaveMode(!mPowerSave);
